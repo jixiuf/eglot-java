@@ -449,7 +449,11 @@ Otherwise returns nil"
                   (locate-dominating-file dir ".project")
                   (locate-dominating-file dir eglot-java-filename-build-gradle-groovy)
                   (locate-dominating-file dir eglot-java-filename-build-gradle-kotlin))))
-    (and root (cons 'java root))))
+    (if root (cons 'java root)
+      (when-let ((root (locate-dominating-file dir ".eglot-java-project")))
+        (with-temp-buffer
+          (insert-file-contents (expand-file-name ".eglot-java-project" root))
+          (cons 'java (buffer-string)))))))
 
 (cl-defmethod project-root ((project (head java)))
   "Get the root of a JAVA PROJECT."
@@ -1437,7 +1441,11 @@ DESTINATION-DIR is the directory where the LSP server will be installed."
 (defun eglot-java--jdt-uri-handler (_operation &rest args)
   "Support Eclipse jdtls `jdt://' uri scheme."
   (let* ((uri (car args))
-         (cache-dir (expand-file-name ".eglot-java" (temporary-file-directory)))
+         (root (project-root (project-current)))
+         (cache-dir (expand-file-name
+                     (format ".eglot-java/%s" (md5 root))
+                     (temporary-file-directory)))
+         (project-file (expand-file-name ".eglot-java-project" cache-dir))
          (source-file
           (expand-file-name
            (eglot-java--make-path
@@ -1451,6 +1459,8 @@ DESTINATION-DIR is the directory where the LSP server will be installed."
                                    (file-name-directory source-file)
                                    (file-name-base source-file))))
         (unless (file-directory-p cache-dir) (make-directory cache-dir t))
+        (unless (file-exists-p project-file)
+          (with-temp-file project-file (insert root)))
         (with-temp-file source-file (insert content))
         (with-temp-file metadata-file (insert uri))))
     source-file))
